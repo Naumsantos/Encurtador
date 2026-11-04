@@ -1,0 +1,175 @@
+openapi: 3.1.0
+info:
+  title: Encurtador de links
+  version: 1.0.0
+  description: API para criar links curtos, redirecionar e consultar total de acessos.
+servers:
+  - url: http://localhost:5000
+paths:
+  /api/links:
+    post:
+      operationId: createLink
+      summary: Criar link curto
+      description: Cria um link com código gerado ou escolhido e expiração opcional.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateLinkRequest"
+      responses:
+        "201":
+          description: Link criado.
+          headers:
+            Location:
+              schema:
+                type: string
+                format: uri
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreatedLink"
+        "400":
+          $ref: "#/components/responses/ValidationProblem"
+        "503":
+          $ref: "#/components/responses/BusyProblem"
+  /{code}:
+    get:
+      operationId: redirectToDestination
+      summary: Redirecionar para o destino
+      parameters:
+        - $ref: "#/components/parameters/Code"
+      responses:
+        "302":
+          description: Link ativo; redireciona ao destino.
+          headers:
+            Location:
+              required: true
+              schema:
+                type: string
+                format: uri
+        "404":
+          $ref: "#/components/responses/NotFoundProblem"
+        "503":
+          $ref: "#/components/responses/BusyProblem"
+  /api/links/{code}/stats:
+    get:
+      operationId: getLinkStats
+      summary: Consultar total de acessos
+      description: Consulta pública, sem autenticação; a consulta não incrementa o contador.
+      parameters:
+        - $ref: "#/components/parameters/Code"
+      responses:
+        "200":
+          description: Estatísticas do link, inclusive quando expirado.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LinkStats"
+        "404":
+          $ref: "#/components/responses/NotFoundProblem"
+        "503":
+          $ref: "#/components/responses/BusyProblem"
+components:
+  parameters:
+    Code:
+      name: code
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 20
+      description: Código curto; distingue maiúsculas de minúsculas.
+  schemas:
+    CreateLinkRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - destinationUrl
+      properties:
+        destinationUrl:
+          type: string
+          format: uri
+          maxLength: 2048
+          description: URL absoluta com esquema HTTP ou HTTPS.
+        code:
+          type: [string, "null"]
+          minLength: 4
+          maxLength: 20
+          pattern: "^[A-Za-z0-9_-]{4,20}$"
+          description: Código opcional escolhido pelo criador.
+        expiresAt:
+          type: [string, "null"]
+          format: date-time
+          description: Instante ISO 8601, estritamente futuro no momento da criação.
+    CreatedLink:
+      type: object
+      required:
+        - code
+        - shortUrl
+        - destinationUrl
+        - createdAt
+        - expiresAt
+      properties:
+        code:
+          type: string
+        shortUrl:
+          type: string
+          format: uri
+        destinationUrl:
+          type: string
+          format: uri
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: [string, "null"]
+          format: date-time
+    LinkStats:
+      type: object
+      required:
+        - code
+        - accessCount
+      properties:
+        code:
+          type: string
+        accessCount:
+          type: integer
+          format: int64
+          minimum: 0
+    ProblemDetails:
+      type: object
+      description: RFC 9457 Problem Details; mensagens de validação em português.
+      properties:
+        type:
+          type: string
+          format: uri-reference
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+          format: uri-reference
+  responses:
+    ValidationProblem:
+      description: Dados inválidos; nenhum link é criado.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetails"
+    NotFoundProblem:
+      description: Código inexistente ou link expirado para redirecionamento.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetails"
+    BusyProblem:
+      description: SQLite permaneceu ocupado após retries limitados; a operação não foi reportada como sucesso.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetails"
