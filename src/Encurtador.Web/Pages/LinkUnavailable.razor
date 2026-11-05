@@ -1,0 +1,19 @@
+﻿@page "/{*path}"
+@inject NavigationManager Navigation
+
+<PageTitle>Link indisponível</PageTitle>
+
+<MudText Typo="Typo.h4" HtmlTag="h1" Class="mb-4" tabindex="-1">Este link não existe ou expirou.</MudText>
+
+<MudButton Variant="Variant.Filled"
+           Color="Color.Primary"
+           Style="min-height:44px"
+           OnClick="GoToHome"
+           data-testid="new-link-button">Criar um novo link</MudButton>
+
+@code {
+    [Parameter]
+    public string? Path { get; set; }
+
+    private void GoToHome() => Navigation.NavigateTo("/");
+}
