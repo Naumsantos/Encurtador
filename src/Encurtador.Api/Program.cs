@@ -33,6 +33,12 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 }
 
+app.UseDefaultFiles();
+app.UseBlazorFrameworkFiles();
+app.UseStaticFiles();
+// Roteamento explícito depois dos arquivos estáticos: sem ele, GET /{code} capturaria /index.html e /appsettings.json.
+app.UseRouting();
+
 app.MapLinkEndpoints();
 app.Run();
 
