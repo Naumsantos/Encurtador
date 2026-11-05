@@ -7,6 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="10.0.14" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.12">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -17,6 +18,6 @@
   <ItemGroup>
     <ProjectReference Include="..\Encurtador.Application\Encurtador.Application.csproj" />
     <ProjectReference Include="..\Encurtador.Infrastructure\Encurtador.Infrastructure.csproj" />
-  </ItemGroup>
+        <ProjectReference Include="..\Encurtador.Web\Encurtador.Web.csproj" />  </ItemGroup>
 
 </Project>
