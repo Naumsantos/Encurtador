@@ -13,6 +13,7 @@ public static class LinksEndpoints
         endpoints.MapPost("/api/links", CreateLinkAsync)
             .WithName("CreateLink");
         endpoints.MapGet("/{code}", RedirectAsync)
+            .AddEndpointFilter<BrowserNotFoundPageFilter>()
             .WithName("RedirectToDestination");
         endpoints.MapGet("/api/links/{code}/stats", GetStatsAsync)
             .WithName("GetLinkStats");
