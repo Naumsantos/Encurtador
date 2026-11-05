@@ -1,0 +1,118 @@
+﻿@inject IShortLinkApi Api
+
+<MudText Typo="Typo.h5" HtmlTag="h2" Class="mb-3">Consultar acessos</MudText>
+
+<form @onsubmit="SubmitAsync" @onsubmit:preventDefault novalidate aria-label="Consultar acessos de um link">
+    <MudStack Spacing="3">
+        <MudTextField @ref="_inputField"
+                      @bind-Value="_model.Input"
+                      Immediate="true"
+                      Label="Código ou link curto"
+                      Variant="Variant.Outlined"
+                      Error="@(_fieldError is not null)"
+                      ErrorText="@_fieldError"
+                      ErrorId="lookup-input-error"
+                      UserAttributes="@(new Dictionary<string, object> { ["data-testid"] = "lookup-input" })" />
+
+        <MudButton ButtonType="ButtonType.Submit"
+                   Variant="Variant.Filled"
+                   Color="Color.Secondary"
+                   Disabled="_isSubmitting"
+                   Style="min-height:44px"
+                   data-testid="lookup-submit">
+            @if (_isSubmitting)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" aria-label="Consultando" />
+                <span>Consultando…</span>
+            }
+            else
+            {
+                <span>Consultar</span>
+            }
+        </MudButton>
+    </MudStack>
+</form>
+
+<div role="status" aria-live="polite" class="mt-3">
+    @if (_result is not null)
+    {
+        <MudAlert Severity="@_resultSeverity" Variant="Variant.Outlined" data-testid="lookup-result">@_result</MudAlert>
+    }
+</div>
+
+@code {
+    private readonly LookupModel _model = new();
+    private MudTextField<string?>? _inputField;
+    private string? _fieldError;
+    private string? _result;
+    private Severity _resultSeverity = Severity.Info;
+    private bool _isSubmitting;
+    private bool _focusInput;
+
+    private async Task SubmitAsync()
+    {
+        if (_isSubmitting)
+        {
+            return;
+        }
+
+        _fieldError = null;
+        _result = null;
+
+        if (string.IsNullOrWhiteSpace(_model.Input))
+        {
+            Fail("Informe o código ou o link curto.");
+            return;
+        }
+
+        var parsed = ShortCodeParser.Parse(_model.Input);
+        if (!parsed.IsValid)
+        {
+            Fail("Informe um código ou um link curto válido.");
+            return;
+        }
+
+        _isSubmitting = true;
+        try
+        {
+            switch (await Api.GetStatsAsync(parsed.Code!))
+            {
+                case ApiResult<LinkStatsDto>.Success success:
+                    var count = success.Value.AccessCount;
+                    _result = $"{count:N0} {(count == 1 ? "acesso" : "acessos")}";
+                    _resultSeverity = Severity.Success;
+                    break;
+                case ApiResult<LinkStatsDto>.NotFound:
+                    Fail("Nenhum link encontrado para esse código.");
+                    break;
+                case ApiResult<LinkStatsDto>.Unavailable unavailable:
+                    _result = unavailable.Message;
+                    _resultSeverity = Severity.Error;
+                    break;
+                default:
+                    _result = ShortLinkApiClient.UnavailableMessage;
+                    _resultSeverity = Severity.Error;
+                    break;
+            }
+        }
+        finally
+        {
+            _isSubmitting = false;
+        }
+    }
+
+    private void Fail(string message)
+    {
+        _fieldError = message;
+        _focusInput = true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_focusInput && _inputField is not null)
+        {
+            _focusInput = false;
+            await _inputField.FocusAsync();
+        }
+    }
+}
