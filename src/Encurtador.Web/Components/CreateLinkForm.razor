@@ -1,0 +1,207 @@
+﻿@inject IShortLinkApi Api
+@inject IBrowserTimeZone TimeZone
+
+<form @onsubmit="SubmitAsync" @onsubmit:preventDefault novalidate aria-label="Criar link curto">
+    <MudStack Spacing="3">
+        <MudTextField @ref="_urlField"
+                      @bind-Value="_model.DestinationUrl"
+                      Immediate="true"
+                      Label="URL de destino"
+                      Variant="Variant.Outlined"
+                      InputType="InputType.Url"
+                      Error="@HasError(FormField.DestinationUrl)"
+                      ErrorText="@ErrorOf(FormField.DestinationUrl)"
+                      ErrorId="@ErrorIdOf(FormField.DestinationUrl)"
+                      UserAttributes="@Attributes("destination-url")" />
+
+        <MudTextField @ref="_codeField"
+                      @bind-Value="_model.Code"
+                      Immediate="true"
+                      Label="Código personalizado (opcional)"
+                      Variant="Variant.Outlined"
+                      Error="@HasError(FormField.Code)"
+                      ErrorText="@ErrorOf(FormField.Code)"
+                      ErrorId="@ErrorIdOf(FormField.Code)"
+                      UserAttributes="@Attributes("custom-code")" />
+
+        <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap">
+            <MudDatePicker @ref="_dateField"
+                           @bind-Date="_model.ExpirationDate"
+                           Label="Data de expiração (opcional)"
+                           Variant="Variant.Outlined"
+                           Editable="true"
+                           DateFormat="dd/MM/yyyy"
+                           Error="@HasError(FormField.Expiration)"
+                           ErrorText="@ErrorOf(FormField.Expiration)"
+                           ErrorId="@ErrorIdOf(FormField.Expiration)"
+                           Style="flex:1 1 200px"
+                           UserAttributes="@Attributes("expiration-date")" />
+            <MudTimePicker @bind-Time="_model.ExpirationTime"
+                           Label="Hora (opcional)"
+                           Variant="Variant.Outlined"
+                           Editable="true"
+                           Style="flex:1 1 140px"
+                           UserAttributes="@Attributes("expiration-time")" />
+        </MudStack>
+
+        <div role="alert">
+            @if (_generalError is not null)
+            {
+                <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" data-testid="form-error">@_generalError</MudAlert>
+            }
+        </div>
+
+        <MudButton ButtonType="ButtonType.Submit"
+                   Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   Disabled="_isSubmitting"
+                   Style="min-height:44px"
+                   data-testid="create-submit">
+            @if (_isSubmitting)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" aria-label="Enviando" />
+                <span>Criando…</span>
+            }
+            else
+            {
+                <span>Criar link curto</span>
+            }
+        </MudButton>
+    </MudStack>
+</form>
+
+@if (_created is not null)
+{
+    <CreatedLinkCard Link="_created" />
+}
+
+@code {
+    private readonly CreateLinkModel _model = new();
+    private readonly Dictionary<FormField, string> _errors = new();
+    private MudTextField<string?>? _urlField;
+    private MudTextField<string?>? _codeField;
+    private MudDatePicker? _dateField;
+    private CreatedLinkDto? _created;
+    private string? _generalError;
+    private bool _isSubmitting;
+    private FormField? _focusTarget;
+
+    private bool HasError(FormField field) => _errors.ContainsKey(field);
+
+    private string? ErrorOf(FormField field) => _errors.GetValueOrDefault(field);
+
+    private static string? ErrorIdOf(FormField field) => field switch
+    {
+        FormField.DestinationUrl => "destination-url-error",
+        FormField.Code => "custom-code-error",
+        FormField.Expiration => "expiration-date-error",
+        _ => null
+    };
+
+    private static Dictionary<string, object> Attributes(string testId) => new() { ["data-testid"] = testId };
+
+    private async Task SubmitAsync()
+    {
+        if (_isSubmitting)
+        {
+            return;
+        }
+
+        _isSubmitting = true;
+        _errors.Clear();
+        _generalError = null;
+        _created = null;
+
+        try
+        {
+            var request = await BuildRequestAsync();
+            if (request is null)
+            {
+                return;
+            }
+
+            switch (await Api.CreateLinkAsync(request))
+            {
+                case ApiResult<CreatedLinkDto>.Success success:
+                    _created = success.Value;
+                    _model.Clear();
+                    break;
+                case ApiResult<CreatedLinkDto>.Rejected rejected:
+                    ShowError(rejected.Field, rejected.Message);
+                    break;
+                case ApiResult<CreatedLinkDto>.Unavailable unavailable:
+                    ShowError(FormField.General, unavailable.Message);
+                    break;
+                default:
+                    ShowError(FormField.General, ShortLinkApiClient.UnavailableMessage);
+                    break;
+            }
+        }
+        finally
+        {
+            _isSubmitting = false;
+        }
+    }
+
+    // Validações locais e conversão do fuso acontecem antes de qualquer chamada à API.
+    private async Task<CreateLinkRequest?> BuildRequestAsync()
+    {
+        var destination = _model.TrimmedDestinationUrl;
+        if (destination.Length == 0)
+        {
+            ShowError(FormField.DestinationUrl, "Informe a URL de destino.");
+        }
+
+        var offset = TimeSpan.Zero;
+        if (ExpirationConverter.ToLocalDateTime(_model.ExpirationDate, _model.ExpirationTime) is { } local)
+        {
+            offset = await TimeZone.GetOffsetAsync(local);
+        }
+
+        var expiration = ExpirationConverter.Convert(_model.ExpirationDate, _model.ExpirationTime, offset);
+        if (expiration.Error is not null)
+        {
+            ShowError(FormField.Expiration, expiration.Error);
+        }
+
+        return _errors.Count > 0
+            ? null
+            : new CreateLinkRequest(destination, _model.TrimmedCode, expiration.Value);
+    }
+
+    private void ShowError(FormField field, string message)
+    {
+        if (field == FormField.General)
+        {
+            _generalError = message;
+        }
+        else
+        {
+            _errors[field] = message;
+        }
+
+        _focusTarget ??= field;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_focusTarget is not { } target || _isSubmitting)
+        {
+            return;
+        }
+
+        _focusTarget = null;
+        switch (target)
+        {
+            case FormField.DestinationUrl when _urlField is not null:
+                await _urlField.FocusAsync();
+                break;
+            case FormField.Code when _codeField is not null:
+                await _codeField.FocusAsync();
+                break;
+            case FormField.Expiration when _dateField is not null:
+                await _dateField.FocusAsync();
+                break;
+        }
+    }
+}

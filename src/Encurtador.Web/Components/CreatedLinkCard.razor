@@ -1,0 +1,64 @@
+﻿@inject IClipboardService Clipboard
+@inject IBrowserTimeZone TimeZone
+
+<MudPaper Elevation="2" Class="pa-4 mt-4" data-testid="created-link">
+    <MudText Typo="Typo.h6" HtmlTag="h2">Link criado</MudText>
+    <MudText Class="break-anywhere my-2">
+        <MudLink Href="@Link.ShortUrl" Target="_blank" rel="noopener" data-testid="short-url">@Link.ShortUrl</MudLink>
+    </MudText>
+    @if (_expirationText is not null)
+    {
+        <MudText Typo="Typo.body2" Class="mb-2" data-testid="expires-at">Expira em @_expirationText</MudText>
+    }
+    <MudButton Variant="Variant.Outlined"
+               Color="Color.Primary"
+               OnClick="CopyAsync"
+               Style="min-height:44px"
+               data-testid="copy-button">@(_copied ? "Copiado!" : "Copiar")</MudButton>
+    <div role="status" aria-live="polite">
+        @if (_copyFailed)
+        {
+            <MudText Color="Color.Error" Class="mt-2" data-testid="copy-error">Não foi possível copiar. Selecione o link e copie manualmente.</MudText>
+        }
+        else if (_copied)
+        {
+            <span class="sr-only">Copiado!</span>
+        }
+    </div>
+</MudPaper>
+
+@code {
+    private CreatedLinkDto? _renderedFor;
+    private bool _copied;
+    private bool _copyFailed;
+    private string? _expirationText;
+
+    [Parameter, EditorRequired]
+    public CreatedLinkDto Link { get; set; } = default!;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (ReferenceEquals(_renderedFor, Link))
+        {
+            return;
+        }
+
+        _renderedFor = Link;
+        _copied = false;
+        _copyFailed = false;
+        _expirationText = null;
+
+        if (Link.ExpiresAt is { } expiresAt)
+        {
+            var offset = await TimeZone.GetOffsetAtAsync(expiresAt);
+            _expirationText = expiresAt.ToOffset(offset).ToString("dd/MM/yyyy HH:mm", System.Globalization.CultureInfo.GetCultureInfo("pt-BR"));
+        }
+    }
+
+    private async Task CopyAsync()
+    {
+        var success = await Clipboard.CopyAsync(Link.ShortUrl);
+        _copied = success;
+        _copyFailed = !success;
+    }
+}
